@@ -376,9 +376,9 @@ idAFAttachment::Damage
 Pass damage to body at the bindjoint
 ============
 */
-void idAFAttachment::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir,
+void idAFAttachment::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, 
 	const char *damageDefName, const float damageScale, const int location ) {
-
+	
 	if ( body ) {
 		body->Damage( inflictor, attacker, dir, damageDefName, damageScale, attachJoint );
 	}
@@ -965,6 +965,7 @@ idAFEntity_Gibbable::idAFEntity_Gibbable( void ) {
 	skeletonModel = NULL;
 	skeletonModelDefHandle = -1;
 	gibbed = false;
+	searchable = false;	// sikk - Searchable Corpses
 }
 
 /*
@@ -987,6 +988,8 @@ idAFEntity_Gibbable::Save
 void idAFEntity_Gibbable::Save( idSaveGame *savefile ) const {
 	savefile->WriteBool( gibbed );
 	savefile->WriteBool( combatModel != NULL );
+
+	savefile->WriteBool( searchable );	// sikk - Searchable Corpses
 }
 
 /*
@@ -999,6 +1002,8 @@ void idAFEntity_Gibbable::Restore( idRestoreGame *savefile ) {
 
 	savefile->ReadBool( gibbed );
 	savefile->ReadBool( hasCombatModel );
+
+	savefile->ReadBool( searchable );	// sikk - Searchable Corpses
 
 	InitSkeletonModel();
 
@@ -1017,6 +1022,8 @@ void idAFEntity_Gibbable::Spawn( void ) {
 	InitSkeletonModel();
 
 	gibbed = false;
+
+	spawnArgs.GetBool( "searchable", "0", searchable );	// sikk - Searchable Corpses
 }
 
 /*
@@ -1092,7 +1099,8 @@ void idAFEntity_Gibbable::Damage( idEntity *inflictor, idEntity *attacker, const
 		return;
 	}
 	idAFEntity_Base::Damage( inflictor, attacker, dir, damageDefName, damageScale, location );
-	if ( health < -20 && spawnArgs.GetBool( "gib" ) ) {
+// sikk - Changed gib health from -20 to -health
+	if ( health < -spawnArgs.GetInt( "health" ) && spawnArgs.GetBool( "gib" ) ) {
 		Gib( dir, damageDefName );
 	}
 }
@@ -1173,14 +1181,19 @@ void idAFEntity_Gibbable::Gib( const idVec3 &dir, const char *damageDefName ) {
 	UnlinkCombat();
 
 	if ( g_bloodEffects.GetBool() ) {
-		if ( gameLocal.time > gameLocal.GetGibTime() ) {
+		// sikk - Since "nextGibTime" is a member of idGameLocal and not idAFEntity||idAFEntity_Gibbable
+		// the folloing if statement is only true once per damage event instead of per entity being damaged.
+		// This is why only one entity will get gibbed while the rest just disappear after a few seconds.
+		// I commented this out instead of moving the variable to the proper class because it's easier and
+		// the delay is only 200ms so the difference should be unnoticable 
+//		if ( gameLocal.time > gameLocal.GetGibTime() ) {
 			gameLocal.SetGibTime( gameLocal.time + GIB_DELAY );
 			SpawnGibs( dir, damageDefName );
 			renderEntity.noShadow = true;
 			renderEntity.shaderParms[ SHADERPARM_TIME_OF_DEATH ] = gameLocal.time * 0.001f;
 			StartSound( "snd_gibbed", SND_CHANNEL_ANY, 0, false, NULL );
 			gibbed = true;
-		}
+//		}
 	} else {
 		gibbed = true;
 	}
@@ -1628,7 +1641,7 @@ void idAFEntity_Vehicle::Spawn( void ) {
 	steeringWheelJoint = animator.GetJointHandle( steeringWheelJointName );
 
 	spawnArgs.GetFloat( "wheelRadius", "20", wheelRadius );
-	spawnArgs.GetFloat( "steerSpeed", "5", steerSpeed );
+	spawnArgs.GetFloat( "steerSpeed", "5", steerSpeed ); 
 
 	player = NULL;
 	steerAngle = 0.0f;
@@ -2683,7 +2696,7 @@ idGameEdit::AF_CreateMesh
 idRenderModel *idGameEdit::AF_CreateMesh( const idDict &args, idVec3 &meshOrigin, idMat3 &meshAxis, bool &poseIsSet ) {
 	int i, jointNum;
 	const idDeclAF *af;
-	const idDeclAF_Body *fb;
+	const idDeclAF_Body *fb = NULL;	// sikk - warning C4701: potentially uninitialized local variable used
 	renderEntity_t ent;
 	idVec3 origin, *bodyOrigin, *newBodyOrigin, *modifiedOrigin;
 	idMat3 axis, *bodyAxis, *newBodyAxis, *modifiedAxis;
@@ -2843,7 +2856,7 @@ idRenderModel *idGameEdit::AF_CreateMesh( const idDict &args, idVec3 &meshOrigin
 			modifiedAxis[ jointNum ] = ( bodyAxis[i] * originalJoints[jointNum].ToMat3().Transpose() ).Transpose() * ( newBodyAxis[i] * meshAxis.Transpose() );
 			// FIXME: calculate correct modifiedOrigin
 			modifiedOrigin[ jointNum ] = originalJoints[ jointNum ].ToVec3();
-		}
+ 		}
 	}
 
 	// apply joint modifications to the skeleton

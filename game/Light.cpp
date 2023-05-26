@@ -126,10 +126,10 @@ void idGameEdit::ParseSpawnArgsToRenderLight( const idDict *args, renderLight_t 
 	idMat3 mat;
 	if ( !args->GetMatrix( "light_rotation", "1 0 0 0 1 0 0 0 1", mat ) ) {
 		if ( !args->GetMatrix( "rotation", "1 0 0 0 1 0 0 0 1", mat ) ) {
-			args->GetFloat( "angle", "0", angles[ 1 ] );
-			angles[ 0 ] = 0;
+	   		args->GetFloat( "angle", "0", angles[ 1 ] );
+   			angles[ 0 ] = 0;
 			angles[ 1 ] = idMath::AngleNormalize360( angles[ 1 ] );
-			angles[ 2 ] = 0;
+	   		angles[ 2 ] = 0;
 			mat = angles.ToMat3();
 		}
 	}
@@ -231,7 +231,7 @@ archives object for save game file
 */
 void idLight::Save( idSaveGame *savefile ) const {
 	savefile->WriteRenderLight( renderLight );
-
+	
 	savefile->WriteBool( renderLight.prelightModel != NULL );
 
 	savefile->WriteVec3( localLightOrigin );
@@ -299,6 +299,13 @@ void idLight::Restore( idRestoreGame *savefile ) {
 	savefile->ReadBool( soundWasPlaying );
 
 	lightDefHandle = -1;
+
+// sikk---> Soft Shadows PostProcess
+	// only put lights that cast shadows into the list
+	if ( spawnArgs.GetInt( "noshadows" ) == 0  ) {
+		gameLocal.currentLights.Append( entityNumber );
+	}
+// <---sikk
 
 	SetLightLevel();
 }
@@ -386,7 +393,7 @@ void idLight::Spawn( void ) {
 			int	pos;
 
 			needBroken = false;
-
+		
 			pos = model.Find( "." );
 			if ( pos < 0 ) {
 				pos = model.Length();
@@ -399,7 +406,7 @@ void idLight::Spawn( void ) {
 				brokenModel += &model[ pos ];
 			}
 		}
-
+	
 		// make sure the model gets cached
 		if ( !renderModelManager->CheckModel( brokenModel ) ) {
 			if ( needBroken ) {
@@ -410,12 +417,19 @@ void idLight::Spawn( void ) {
 		}
 
 		GetPhysics()->SetContents( spawnArgs.GetBool( "nonsolid" ) ? 0 : CONTENTS_SOLID );
-
+	
 		// make sure the collision model gets cached
 		idClipModel::CheckModel( brokenModel );
 	}
 
 	PostEventMS( &EV_PostSpawn, 0 );
+
+// sikk---> Soft Shadows PostProcess
+	// only put lights that cast shadows into the list
+	if ( spawnArgs.GetInt( "noshadows" ) == 0  ) {
+		gameLocal.currentLights.Append( entityNumber );
+	}
+// <---sikk
 
 	UpdateVisuals();
 }
@@ -471,16 +485,6 @@ idLight::SetColor
 */
 void idLight::SetColor( float red, float green, float blue ) {
 	baseColor.Set( red, green, blue );
-	SetLightLevel();
-}
-
-/*
-================
-idLight::SetColor
-================
-*/
-void idLight::SetColor( const idVec3 &color ) {
-	baseColor = color;
 	SetLightLevel();
 }
 
@@ -673,7 +677,7 @@ void idLight::BecomeBroken( idEntity *activator ) {
 
 	}
 
-		ActivateTargets( activator );
+	ActivateTargets( activator );
 
 	// offset the start time of the shader to sync it to the game time
 	renderEntity.shaderParms[ SHADERPARM_TIMEOFFSET ] = -MS2SEC( gameLocal.time );
@@ -1101,7 +1105,7 @@ void idLight::ReadFromSnapshot( const idBitMsgDelta &msg ) {
 		}
 	}
 	UnpackColor( msg.ReadInt(), baseColor );
-	// lightParentEntityNum = msg.ReadBits( GENTITYNUM_BITS );
+	// lightParentEntityNum = msg.ReadBits( GENTITYNUM_BITS );	
 
 /*	// only helps prediction
 	UnpackColor( msg.ReadInt(), fadeFrom );
@@ -1156,3 +1160,19 @@ bool idLight::ClientReceiveEvent( int event, int time, const idBitMsg &msg ) {
 
 	return idEntity::ClientReceiveEvent( event, time, msg );
 }
+
+// sikk---> Soft Shadows PostProcess
+/*
+================
+idLight::UpdateShadowState
+================
+*/
+void idLight::UpdateShadowState( void ) {
+	// let the renderer apply it to the world
+	if ( ( lightDefHandle != -1 ) ) {
+		gameRenderWorld->UpdateLightDef( lightDefHandle, &renderLight );
+	} else {
+		lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
+	}
+}
+// <---sikk

@@ -225,7 +225,7 @@ idAASFindAttackPosition::idAASFindAttackPosition( const idAI *self, const idMat3
 	this->gravityAxis	= gravityAxis;
 
 	excludeBounds		= idBounds( idVec3( -64.0, -64.0f, -8.0f ), idVec3( 64.0, 64.0f, 64.0f ) );
-	excludeBounds.TranslateSelf( self->GetPhysics()->GetOrigin() );
+	excludeBounds.TranslateSelf( self->GetPhysics()->GetOrigin() );	
 
 	// setup PVS
 	idBounds bounds( targetPos - idVec3( 16, 16, 0 ), targetPos + idVec3( 16, 16, 64 ) );
@@ -384,6 +384,11 @@ idAI::idAI() {
 	eyeFocusRate		= 0.0f;
 	headFocusRate		= 0.0f;
 	focusAlignTime		= 0;
+
+// sikk---> Random Encounters System
+	dormantTime			= 0;
+	isRandom			= false;
+// <---sikk
 }
 
 /*
@@ -531,6 +536,8 @@ void idAI::Save( idSaveGame *savefile ) const {
 	savefile->WriteJoint( flyTiltJoint );
 
 	savefile->WriteBool( GetPhysics() == static_cast<const idPhysics *>(&physicsObj) );
+
+	savefile->WriteBool( isRandom );	// sikk - Random Encounters System
 }
 
 /*
@@ -680,6 +687,8 @@ void idAI::Restore( idRestoreGame *savefile ) {
 
 	savefile->ReadBool( restorePhysics );
 
+	savefile->ReadBool( isRandom );	// sikk - Random Encounters System
+
 	// Set the AAS if the character has the correct gravity vector
 	idVec3 gravity = spawnArgs.GetVector( "gravityDir", "0 0 -1" );
 	gravity *= g_gravity.GetFloat();
@@ -719,6 +728,8 @@ void idAI::Spawn( void ) {
 		return;
 	}
 
+	spawnArgs.GetBool( "isRandom", "0", isRandom );	// sikk - Random Encounters System
+
 	spawnArgs.GetInt(	"team",					"1",		team );
 	spawnArgs.GetInt(	"rank",					"0",		rank );
 	spawnArgs.GetInt(	"fly_offset",			"0",		fly_offset );
@@ -734,7 +745,7 @@ void idAI::Spawn( void ) {
 
 	spawnArgs.GetFloat( "melee_range",			"64",		melee_range );
 	spawnArgs.GetFloat( "projectile_height_to_distance_ratio",	"1", projectile_height_to_distance_ratio );
-
+	
 	spawnArgs.GetFloat( "turn_rate",			"360",		turnRate );
 
 	spawnArgs.GetBool( "talks",					"0",		talks );
@@ -866,7 +877,7 @@ void idAI::Spawn( void ) {
 
 	// move up to make sure the monster is at least an epsilon above the floor
 	physicsObj.SetOrigin( GetPhysics()->GetOrigin() + idVec3( 0, 0, CM_CLIP_EPSILON ) );
-
+	
 	if ( num_cinematics ) {
 		physicsObj.SetGravity( vec3_origin );
 	} else {
@@ -915,6 +926,20 @@ void idAI::Spawn( void ) {
 		StartSound( "snd_ambient", SND_CHANNEL_AMBIENT, 0, false, NULL );
 	}
 
+// sikk - Monster Burn Away Delay (this doesn't effect zombies or other non-burning monsters)
+	if ( g_burnAwayDelay.GetFloat() > 0.0 && spawnArgs.GetFloat( "burnaway" ) > 0.0 )
+		spawnArgs.SetFloat( "burnaway", g_burnAwayDelay.GetFloat() );
+// <---sikk
+
+// sikk---> Enemy Health Management (also modifies friendlies but that doesn't matter)
+	health *= g_enemyHealthScale.GetFloat();
+
+	if ( g_enemyHealthRandom.GetBool() )
+		health += health * 0.5f * gameLocal.random.CRandomFloat();
+
+	health = ( health <= 0 ) ? 1 : health;
+// <---sikk
+
 	if ( health <= 0 ) {
 		gameLocal.Warning( "entity '%s' doesn't have health set", name.c_str() );
 		health = 1;
@@ -945,7 +970,7 @@ void idAI::InitMuzzleFlash( void ) {
 
 	spawnArgs.GetString( "mtr_flashShader", "muzzleflash", &shader );
 	spawnArgs.GetVector( "flashColor", "0 0 0", flashColor );
-	float flashRadius = spawnArgs.GetFloat( "flashRadius" );
+	float flashRadius = spawnArgs.GetFloat( "flashRadius" );	
 	flashTime = SEC2MS( spawnArgs.GetFloat( "flashTime", "0.25" ) );
 
 	memset( &worldMuzzleFlash, 0, sizeof ( worldMuzzleFlash ) );
@@ -1018,6 +1043,12 @@ void idAI::DormantBegin( void ) {
 		// remove ourselves from the enemy's enemylist
 		enemyNode.Remove();
 	}
+
+// sikk---> Random Encounters System
+	if ( isRandom )
+		dormantTime = gameLocal.time;
+// <---sikk
+
 	idActor::DormantBegin();
 }
 
@@ -1033,12 +1064,17 @@ void idAI::DormantEnd( void ) {
 		// let our enemy know we're back on the trail
 		enemyNode.AddToEnd( enemy.GetEntity()->enemyList );
 	}
-
+	
 	if ( particles.Num() ) {
 		for ( int i = 0; i < particles.Num(); i++ ) {
 			particles[i].time = gameLocal.time;
 		}
 	}
+
+// sikk---> Random Encounters System
+	if ( spawnArgs.GetInt( "isRandom" ) )
+		dormantTime = 0;
+// <---sikk
 
 	idActor::DormantEnd();
 }
@@ -1153,6 +1189,11 @@ void idAI::Think( void ) {
 	Present();
 	UpdateDamageEffects();
 	LinkCombat();
+
+// sikk---> Random Encounters System
+	if ( isRandom && ( AI_DEST_UNREACHABLE || ( dormantTime && gameLocal.time > ( dormantTime + g_randomEncountersDormantTime.GetInteger() * 1000 ) ) ) ) 
+		Damage( (idEntity*)gameLocal.world, (idEntity*)gameLocal.world, idVec3( 0, 0, 1 ), "damage_moverCrush", 999999, INVALID_JOINT );
+// <---sikk
 }
 
 /***********************************************************************
@@ -1340,7 +1381,7 @@ idAI::ReachedPos
 bool idAI::ReachedPos( const idVec3 &pos, const moveCommand_t moveCommand ) const {
 	if ( move.moveType == MOVETYPE_SLIDE ) {
 		idBounds bnds( idVec3( -4, -4.0f, -8.0f ), idVec3( 4.0f, 4.0f, 64.0f ) );
-		bnds.TranslateSelf( physicsObj.GetOrigin() );
+		bnds.TranslateSelf( physicsObj.GetOrigin() );	
 		if ( bnds.ContainsPoint( pos ) ) {
 			return true;
 		}
@@ -1351,7 +1392,7 @@ bool idAI::ReachedPos( const idVec3 &pos, const moveCommand_t moveCommand ) cons
 			}
 		} else {
 			idBounds bnds( idVec3( -16.0, -16.0f, -8.0f ), idVec3( 16.0, 16.0f, 64.0f ) );
-			bnds.TranslateSelf( physicsObj.GetOrigin() );
+			bnds.TranslateSelf( physicsObj.GetOrigin() );	
 			if ( bnds.ContainsPoint( pos ) ) {
 				return true;
 			}
@@ -2011,7 +2052,7 @@ idAI::WanderAround
 */
 bool idAI::WanderAround( void ) {
 	StopMove( MOVE_STATUS_DONE );
-
+	
 	move.moveDest = physicsObj.GetOrigin() + viewAxis[ 0 ] * physicsObj.GetGravityAxis() * 256.0f;
 	if ( !NewWanderDir( move.moveDest ) ) {
 		StopMove( MOVE_STATUS_DEST_UNREACHABLE );
@@ -2084,7 +2125,7 @@ bool idAI::StepDirection( float dir ) {
 			if ( z <= ceilingPos.z ) {
 				start.x = org.x;
 				start.y = org.y;
-				start.z = z;
+                start.z = z;
 			} else {
 				start = ceilingPos;
 			}
@@ -2171,7 +2212,7 @@ bool idAI::NewWanderDir( const idVec3 &dest ) {
 	if ( gameLocal.random.RandomInt() & 1 ) {
 		for( tdir = 0; tdir <= 315; tdir += 45 ) {
 			if ( tdir != turnaround && StepDirection( tdir ) ) {
-				return true;
+                return true;
 			}
 		}
 	} else {
@@ -2224,7 +2265,7 @@ bool idAI::GetMovePos( idVec3 &seekPos ) {
 		}
 		return false;
 		break;
-
+	
 	case MOVE_SLIDE_TO_POSITION :
 		seekPos = org;
 		return false;
@@ -2629,12 +2670,16 @@ idAI::DeadMove
 */
 void idAI::DeadMove( void ) {
 	idVec3				delta;
+	monsterMoveResult_t	moveResult;
+
+	idVec3 org = physicsObj.GetOrigin();
 
 	GetMoveDelta( viewAxis, viewAxis, delta );
 	physicsObj.SetDelta( delta );
 
 	RunPhysics();
 
+	moveResult = physicsObj.GetMoveResult();
 	AI_ONGROUND = physicsObj.OnGround();
 }
 
@@ -2648,6 +2693,7 @@ void idAI::AnimMove( void ) {
 	idVec3				delta;
 	idVec3				goalDelta;
 	float				goalDist;
+	monsterMoveResult_t	moveResult;
 	idVec3				newDest;
 
 	idVec3 oldorigin = physicsObj.GetOrigin();
@@ -2655,7 +2701,7 @@ void idAI::AnimMove( void ) {
 
 	AI_BLOCKED = false;
 
-	if ( move.moveCommand < NUM_NONMOVING_COMMANDS ){
+	if ( move.moveCommand < NUM_NONMOVING_COMMANDS ){ 
 		move.lastMoveOrigin.Zero();
 		move.lastMoveTime = gameLocal.time;
 	}
@@ -2711,6 +2757,7 @@ void idAI::AnimMove( void ) {
 		gameRenderWorld->DebugLine( colorCyan, oldorigin, physicsObj.GetOrigin(), 5000 );
 	}
 
+	moveResult = physicsObj.GetMoveResult();
 	if ( !af_push_moveables && attack.Length() && TestMelee() ) {
 		DirectDamage( attack, enemy.GetEntity() );
 	} else {
@@ -2765,13 +2812,15 @@ void idAI::SlideMove( void ) {
 	idVec3				delta;
 	idVec3				goalDelta;
 	float				goalDist;
+	monsterMoveResult_t	moveResult;
 	idVec3				newDest;
 
 	idVec3 oldorigin = physicsObj.GetOrigin();
+	idMat3 oldaxis = viewAxis;
 
 	AI_BLOCKED = false;
 
-	if ( move.moveCommand < NUM_NONMOVING_COMMANDS ){
+	if ( move.moveCommand < NUM_NONMOVING_COMMANDS ){ 
 		move.lastMoveOrigin.Zero();
 		move.lastMoveTime = gameLocal.time;
 	}
@@ -2837,6 +2886,7 @@ void idAI::SlideMove( void ) {
 		gameRenderWorld->DebugLine( colorCyan, oldorigin, physicsObj.GetOrigin(), 5000 );
 	}
 
+	moveResult = physicsObj.GetMoveResult();
 	if ( !af_push_moveables && attack.Length() && TestMelee() ) {
 		DirectDamage( attack, enemy.GetEntity() );
 	} else {
@@ -2870,9 +2920,9 @@ idAI::AdjustFlyingAngles
 */
 void idAI::AdjustFlyingAngles( void ) {
 	idVec3	vel;
-	float	speed;
-	float	roll;
-	float	pitch;
+	float 	speed;
+	float 	roll;
+	float 	pitch;
 
 	vel = physicsObj.GetLinearVelocity();
 
@@ -2951,7 +3001,7 @@ void idAI::AdjustFlyHeight( idVec3 &vel, const idVec3 &goalPos ) {
 			vel.z += addVel.z;
 			goLower = true;
 		}
-
+        
 		if ( ai_debugMove.GetBool() ) {
 			gameRenderWorld->DebugBounds( goLower ? colorRed : colorGreen, physicsObj.GetBounds(), path.endPos, gameLocal.msec );
 		}
@@ -2981,7 +3031,7 @@ idAI::FlySeekGoal
 */
 void idAI::FlySeekGoal( idVec3 &vel, idVec3 &goalPos ) {
 	idVec3 seekVel;
-
+	
 	// seek the goal position
 	seekVel = Seek( vel, physicsObj.GetOrigin(), goalPos, AI_SEEK_PREDICTION );
 	seekVel *= fly_seek_scale;
@@ -3189,7 +3239,7 @@ int idAI::ReactionTo( const idEntity *ent ) {
 	}
 
 	// monsters will fight when attacked by lower ranked monsters.  rank 0 never fights back.
-	if ( rank && ( actor->rank < rank ) ) {
+	if ( rank && ( actor->rank < rank + g_interRankAggression.GetInteger() ) ) {	// sikk - Inter Rank Aggression
 		return ATTACK_ON_DAMAGE;
 	}
 
@@ -3312,7 +3362,7 @@ void idAI::Killed( idEntity *inflictor, idEntity *attacker, int damage, const id
 	EndAttack();
 
 	if ( g_debugDamage.GetBool() ) {
-		gameLocal.Printf( "Damage: joint: '%s', zone '%s'\n", animator.GetJointName( ( jointHandle_t )location ),
+		gameLocal.Printf( "Damage: joint: '%s', zone '%s'\n", animator.GetJointName( ( jointHandle_t )location ), 
 			GetDamageGroup( location ) );
 	}
 
@@ -3327,6 +3377,18 @@ void idAI::Killed( idEntity *inflictor, idEntity *attacker, int damage, const id
 		AI_DAMAGE = true;
 		return;
 	}
+
+// sikk---> Random Encounters System
+	int i = gameLocal.GetEnemyNumFromName( spawnArgs.GetString( "classname" ) );
+	if ( i ) {
+		if ( isRandom ) {
+			gameLocal.randomEnemyTally--;
+			gameLocal.randomEnemyTally = ( gameLocal.randomEnemyTally < 0 ) ? 0 : gameLocal.randomEnemyTally;
+		} else {
+			gameLocal.randomEnemyList.Append( i );
+		}
+	}
+// <---sikk
 
 	// stop all voice sounds
 	StopSound( SND_CHANNEL_VOICE, false );
@@ -3513,7 +3575,7 @@ void idAI::Activate( idEntity *activator ) {
 
 		// update the script in cinematics so that entities don't start anims or show themselves a frame late.
 		if ( cinematic ) {
-			UpdateAIScript();
+            UpdateAIScript();
 
 			// make sure our model gets updated
 			animator.ForceUpdate();
@@ -3657,7 +3719,7 @@ void idAI::SetEnemyPosition( void ) {
 	idActor		*enemyEnt = enemy.GetEntity();
 	int			enemyAreaNum;
 	int			areaNum;
-	int			lastVisibleReachableEnemyAreaNum;
+	int			lastVisibleReachableEnemyAreaNum = 0;	// sikk - warning C4701: potentially uninitialized local variable used
 	aasPath_t	path;
 	idVec3		pos;
 	bool		onGround;
@@ -3923,7 +3985,7 @@ void idAI::CalculateAttackOffsets( void ) {
 		return;
 	}
 	num = modelDef->NumAnims();
-
+	
 	// needs to be off while getting the offsets so that we account for the distance the monster moves in the attack anim
 	animator.RemoveOriginOffset( false );
 
@@ -4045,7 +4107,7 @@ idProjectile *idAI::CreateProjectile( const idVec3 &pos, const idVec3 &dir ) {
 			clsname = projectileDef->GetString( "classname" );
 			gameLocal.Error( "Could not spawn entityDef '%s'", clsname );
 		}
-
+		
 		if ( !ent->IsType( idProjectile::Type ) ) {
 			clsname = ent->GetClassname();
 			gameLocal.Error( "'%s' is not an idProjectile", clsname );
@@ -4103,8 +4165,35 @@ idProjectile *idAI::LaunchProjectile( const char *jointname, idEntity *target, b
 
 	attack_accuracy = spawnArgs.GetFloat( "attack_accuracy", "7" );
 	attack_cone = spawnArgs.GetFloat( "attack_cone", "70" );
-	projectile_spread = spawnArgs.GetFloat( "projectile_spread", "0" );
-	num_projectiles = spawnArgs.GetInt( "num_projectiles", "1" );
+
+// sikk---> Damage Type/Spread
+	if ( g_damageType.GetInteger() == 1 ) {
+		if ( spawnArgs.GetFloat( "projectile_spread_doom", "-1.0" ) != -1.0 )
+			projectile_spread = spawnArgs.GetFloat( "projectile_spread_doom", "0" );
+		else
+			projectile_spread = spawnArgs.GetFloat( "projectile_spread", "0" );
+
+		if ( spawnArgs.GetInt( "num_projectiles_doom" ) )
+			num_projectiles = spawnArgs.GetInt( "num_projectiles_doom", "1" );
+		else
+			num_projectiles = spawnArgs.GetInt( "num_projectiles", "1" );
+
+	} else if ( g_damageType.GetInteger() == 2 ) {
+		if ( spawnArgs.GetFloat( "projectile_spread_custom", "-1.0" ) != -1.0 )
+			projectile_spread = spawnArgs.GetFloat( "projectile_spread_custom", "0" );
+		else
+			projectile_spread = spawnArgs.GetFloat( "projectile_spread", "0" );
+
+		if ( spawnArgs.GetInt( "num_projectiles_custom" ) )
+			num_projectiles = spawnArgs.GetInt( "num_projectiles_custom", "1" );
+		else
+			num_projectiles = spawnArgs.GetInt( "num_projectiles", "1" );
+
+	} else {
+		projectile_spread = spawnArgs.GetFloat( "projectile_spread", "0" );
+		num_projectiles = spawnArgs.GetInt( "num_projectiles", "1" );
+	}
+// <---sikk
 
 	GetMuzzle( jointname, muzzle, axis );
 
@@ -4507,7 +4596,7 @@ idAI::UpdateMuzzleFlash
 ================
 */
 void idAI::UpdateMuzzleFlash( void ) {
-	if ( worldMuzzleFlashHandle != -1 ) {
+	if ( worldMuzzleFlashHandle != -1 ) { 
 		if ( gameLocal.time >= muzzleFlashEnd ) {
 			gameRenderWorld->FreeLightDef( worldMuzzleFlashHandle );
 			worldMuzzleFlashHandle = -1;
@@ -4709,10 +4798,10 @@ bool idAI::UpdateAnimationControllers( void ) {
 	idVec3		focusPos;
 	idQuat		jawQuat;
 	idVec3		left;
-	idVec3		dir;
-	idVec3		orientationJointPos;
-	idVec3		localDir;
-	idAngles	newLookAng;
+	idVec3 		dir;
+	idVec3 		orientationJointPos;
+	idVec3 		localDir;
+	idAngles 	newLookAng;
 	idAngles	diff;
 	idMat3		mat;
 	idMat3		axis;
@@ -4767,7 +4856,7 @@ bool idAI::UpdateAnimationControllers( void ) {
 
 	idEntity *focusEnt = focusEntity.GetEntity();
 	if ( !allowJointMod || !allowEyeFocus || ( gameLocal.time >= focusTime ) ) {
-		focusPos = GetEyePosition() + orientationJointAxis[ 0 ] * 512.0f;
+	    focusPos = GetEyePosition() + orientationJointAxis[ 0 ] * 512.0f;
 	} else if ( focusEnt == NULL ) {
 		// keep looking at last position until focusTime is up
 		focusPos = currentFocusPos;
@@ -4801,7 +4890,7 @@ bool idAI::UpdateAnimationControllers( void ) {
 	newLookAng.roll	= 0.0f;
 
 	diff = newLookAng - lookAng;
-
+	
 	if ( eyeAng != diff ) {
 		eyeAng = diff;
 		eyeAng.Clamp( eyeMin, eyeMax );
@@ -4850,7 +4939,7 @@ bool idAI::UpdateAnimationControllers( void ) {
 		// lean into turns
 		AdjustFlyingAngles();
 	}
-
+	
 	if ( headEnt ) {
 		idAnimator *headAnimator = headEnt->GetAnimator();
 
@@ -4998,7 +5087,7 @@ void idCombatNode::DrawDebugInfo( void ) {
 	idPlayer		*player = gameLocal.GetLocalPlayer();
 	idVec4			color;
 	idBounds		bounds( idVec3( -16, -16, 0 ), idVec3( 16, 16, 0 ) );
-
+	
 	for( ent = gameLocal.spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
 		if ( !ent->IsType( idCombatNode::Type ) ) {
 			continue;
@@ -5060,7 +5149,7 @@ bool idCombatNode::EntityInView( idActor *actor, const idVec3 &pos ) {
 	const idMat3 &axis = GetPhysics()->GetAxis();
 	idVec3 dir = pos - org;
 	float  dist = dir * axis[ 0 ];
-
+	
 	if ( ( dist < min_dist ) || ( dist > max_dist ) ) {
 		return false;
 	}

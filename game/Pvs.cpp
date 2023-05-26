@@ -259,7 +259,7 @@ void idPVS::FrontPortalPVS( void ) const {
 			}
 
 			for ( p = 0; p < area->numPortals; p++ ) {
-
+	
 				p2 = area->portals[p];
 
 				// if we the whole area is not at the front we need to check
@@ -457,7 +457,7 @@ void idPVS::AddPassageBoundaries( const idWinding &source, const idWinding &pass
 	idPlane		plane;
 
 
-	// check all combinations
+	// check all combinations	
 	for ( i = 0; i < source.GetNumPoints(); i++ ) {
 
 		l = (i + 1) % source.GetNumPoints();
@@ -624,7 +624,7 @@ void idPVS::CreatePassages( void ) const {
 					}
 
 					p = &pvsPortals[(byteNum << 3) + bitNum];
-
+	
 					if ( p->areaNum == source->areaNum ) {
 						continue;
 					}
@@ -1418,5 +1418,32 @@ void idPVS::ReadPVS( const pvsHandle_t handle, const idBitMsg &msg ) {
 		common->Printf( "\n" );
 	}
 }
-
 #endif
+
+// sikk---> Portal Sky Box
+/*
+================
+idPVS::CheckAreasForPortalSky
+================
+*/
+bool idPVS::CheckAreasForPortalSky( const pvsHandle_t handle, const idVec3 &origin ) {
+	int sourceArea;
+
+	if ( handle.i < 0 || handle.i >= MAX_CURRENT_PVS || handle.h != currentPVS[ handle.i ].handle.h )
+		return false;
+
+	sourceArea = gameRenderWorld->PointInArea( origin );
+
+	if ( sourceArea == -1 )
+		return false;
+
+	for ( int i = 0; i < numAreas; i++ ) {
+		if ( !( currentPVS[ handle.i ].pvs[ i >> 3 ] & ( 1 << ( i & 7 ) ) ) )
+			continue;
+		if ( gameRenderWorld->CheckAreaForPortalSky( i ) )
+			return true;
+	}
+
+	return false;
+}
+// <---sikk

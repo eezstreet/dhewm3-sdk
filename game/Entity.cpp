@@ -166,8 +166,8 @@ ABSTRACT_DECLARATION( idClass, idEntity )
 	EVENT( EV_GetMins,				idEntity::Event_GetMins)
 	EVENT( EV_GetMaxs,				idEntity::Event_GetMaxs )
 	EVENT( EV_Touches,				idEntity::Event_Touches )
-	EVENT( EV_SetGuiParm,			idEntity::Event_SetGuiParm )
-	EVENT( EV_SetGuiFloat,			idEntity::Event_SetGuiFloat )
+	EVENT( EV_SetGuiParm, 			idEntity::Event_SetGuiParm )
+	EVENT( EV_SetGuiFloat, 			idEntity::Event_SetGuiFloat )
 	EVENT( EV_GetNextKey,			idEntity::Event_GetNextKey )
 	EVENT( EV_SetKey,				idEntity::Event_SetKey )
 	EVENT( EV_GetKey,				idEntity::Event_GetKey )
@@ -541,7 +541,15 @@ void idEntity::Spawn( void ) {
 		}
 	}
 
-	health = spawnArgs.GetInt( "health" );
+// sikk---> Doom/Custom Health Values
+	if ( g_enemyHealthType.GetInteger() == 1 && spawnArgs.GetInt( "health_doom" ) ) {
+		health = spawnArgs.GetInt( "health_doom" );
+	} else if ( g_enemyHealthType.GetInteger() == 2 && spawnArgs.GetInt( "health_custom" ) ) {
+		health = spawnArgs.GetInt( "health_custom" );
+	} else {
+		health = spawnArgs.GetInt( "health" );
+	}
+// <---sikk
 
 	InitDefaultPhysics( origin, axis );
 
@@ -735,7 +743,7 @@ void idEntity::Restore( idRestoreGame *savefile ) {
 
 	savefile->Read( &fl, sizeof( fl ) );
 	LittleBitField( &fl, sizeof( fl ) );
-
+	
 	savefile->ReadRenderEntity( renderEntity );
 	savefile->ReadInt( modelDefHandle );
 	savefile->ReadRefSound( refSound );
@@ -826,7 +834,7 @@ const char * idEntity::GetName( void ) const {
 /***********************************************************************
 
 	Thinking
-
+	
 ***********************************************************************/
 
 /*
@@ -863,21 +871,22 @@ bool idEntity::DoDormantTests( void ) {
 			return false;
 		}
 		return true;
-	}
-
-	// the monster area is topologically connected to a player, but if
-	// the monster hasn't been woken up before, do the more precise PVS check
-	if ( !fl.hasAwakened ) {
-		if ( !gameLocal.InPlayerPVS( this ) ) {
-			return true;		// stay dormant
+	} else {
+		// the monster area is topologically connected to a player, but if
+		// the monster hasn't been woken up before, do the more precise PVS check
+		if ( !fl.hasAwakened ) {
+			if ( !gameLocal.InPlayerPVS( this ) ) {
+				return true;		// stay dormant
+			}
 		}
+
+		// wake up
+		dormantStart = 0;
+		fl.hasAwakened = true;		// only go dormant when area closed off now, not just out of PVS
+		return false;
 	}
 
-	// wake up
-	dormantStart = 0;
-	fl.hasAwakened = true;		// only go dormant when area closed off now, not just out of PVS
-
-	return false;
+//	return false;	// sikk - warning C4702: unreachable code
 }
 
 /*
@@ -890,7 +899,7 @@ off from the player can skip all of their work
 */
 bool idEntity::CheckDormant( void ) {
 	bool dormant;
-
+	
 	dormant = DoDormantTests();
 	if ( dormant && !fl.isDormant ) {
 		fl.isDormant = true;
@@ -1001,7 +1010,7 @@ void idEntity::BecomeInactive( int flags ) {
 /***********************************************************************
 
 	Visuals
-
+	
 ***********************************************************************/
 
 /*
@@ -1522,7 +1531,7 @@ renderView_t *idEntity::GetRenderView( void ) {
 /***********************************************************************
 
   Sound
-
+	
 ***********************************************************************/
 
 /*
@@ -1716,7 +1725,7 @@ void idEntity::FreeSoundEmitter( bool immediate ) {
 /***********************************************************************
 
   entity binding
-
+	
 ***********************************************************************/
 
 /*
@@ -2351,13 +2360,13 @@ void idEntity::JoinTeam( idEntity *teammember ) {
 			ent->teamChain->teamMaster = master;
 		}
 
-		prev->teamChain = this;
+    	prev->teamChain = this;
 		ent->teamChain = next;
 	}
 
 	teamMaster = master;
 
-	// reorder the active entity list
+	// reorder the active entity list 
 	gameLocal.sortTeamMasters = true;
 }
 
@@ -2412,7 +2421,7 @@ void idEntity::QuitTeam( void ) {
 /***********************************************************************
 
   Physics.
-
+	
 ***********************************************************************/
 
 /*
@@ -2558,7 +2567,7 @@ bool idEntity::RunPhysics( void ) {
 	endTime = gameLocal.time;
 
 	gameLocal.push.InitSavingPushedEntityPositions();
-	blockedPart = NULL;
+	blockedPart = blockingEntity = NULL;	// sikk - warning C4701: potentially uninitialized local variable used
 
 	// save the physics state of the whole team and disable the team for collision detection
 	for ( part = this; part != NULL; part = part->teamChain ) {
@@ -2868,7 +2877,7 @@ void idEntity::RemoveContactEntity( idEntity *ent ) {
 /***********************************************************************
 
 	Damage
-
+	
 ***********************************************************************/
 
 /*
@@ -2979,7 +2988,7 @@ inflictor, attacker, dir, and point can be NULL for environmental effects
 
 ============
 */
-void idEntity::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir,
+void idEntity::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, 
 					  const char *damageDefName, const float damageScale, const int location ) {
 	if ( !fl.takedamage ) {
 		return;
@@ -2998,7 +3007,16 @@ void idEntity::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &di
 		gameLocal.Error( "Unknown damageDef '%s'\n", damageDefName );
 	}
 
-	int	damage = damageDef->GetInt( "damage" );
+// sikk---> Damage Type
+	int	damage;
+	if ( g_damageType.GetInteger() == 1 && damageDef->GetInt( "damage_doom_scale" ) ) {
+		damage = damageDef->GetInt( "damage_doom_scale" ) * ( gameLocal.random.RandomInt( 255 ) % damageDef->GetInt( "damage_doom_range" ) + 1 );
+	} else if ( g_damageType.GetInteger() == 2 && damageDef->GetInt( "damage_custom" ) ) {
+		damage = damageDef->GetInt( "damage_custom" );
+	} else {
+		damage = damageDef->GetInt( "damage" );
+	}
+// <---sikk
 
 	// inform the attacker that they hit someone
 	attacker->DamageFeedback( this, inflictor, damage );
@@ -3084,7 +3102,7 @@ void idEntity::Killed( idEntity *inflictor, idEntity *attacker, int damage, cons
 /***********************************************************************
 
   Script functions
-
+	
 ***********************************************************************/
 
 /*
@@ -3319,7 +3337,7 @@ void idEntity::SignalEvent( idThread *thread, signalNum_t signalnum ) {
 /***********************************************************************
 
   Guis.
-
+	
 ***********************************************************************/
 
 
@@ -3507,7 +3525,7 @@ bool idEntity::HandleSingleGuiCommand( idEntity *entityGui, idLexer *src ) {
 /***********************************************************************
 
   Targets
-
+	
 ***********************************************************************/
 
 /*
@@ -3558,7 +3576,7 @@ idEntity::ActivateTargets
 void idEntity::ActivateTargets( idEntity *activator ) const {
 	idEntity	*ent;
 	int			i, j;
-
+	
 	for( i = 0; i < targets.Num(); i++ ) {
 		ent = targets[ i ].GetEntity();
 		if ( !ent ) {
@@ -3567,7 +3585,7 @@ void idEntity::ActivateTargets( idEntity *activator ) const {
 		if ( ent->RespondsTo( EV_Activate ) || ent->HasSignal( SIG_TRIGGER ) ) {
 			ent->Signal( SIG_TRIGGER );
 			ent->ProcessEvent( &EV_Activate, activator );
-		}
+		} 		
 		for ( j = 0; j < MAX_RENDERENTITY_GUI; j++ ) {
 			if ( ent->renderEntity.gui[ j ] ) {
 				ent->renderEntity.gui[ j ]->Trigger( gameLocal.time );
@@ -3579,7 +3597,7 @@ void idEntity::ActivateTargets( idEntity *activator ) const {
 /***********************************************************************
 
   Misc.
-
+	
 ***********************************************************************/
 
 /*
@@ -3707,7 +3725,7 @@ void idEntity::ShowEditingDialog( void ) {
 /***********************************************************************
 
    Events
-
+	
 ***********************************************************************/
 
 /*
@@ -3874,7 +3892,7 @@ void idEntity::Event_SpawnBind( void ) {
 	const idAnim	*anim;
 	int				animNum;
 	idAnimator		*parentAnimator;
-
+	
 	if ( spawnArgs.GetString( "bind", "", &bind ) ) {
 		if ( idStr::Icmp( bind, "worldspawn" ) == 0 ) {
 			//FIXME: Completely unneccessary since the worldspawn is called "world"
@@ -4079,12 +4097,12 @@ void idEntity::Event_StopSound( int channel, int netSync ) {
 
 /*
 ================
-idEntity::Event_StartSound
+idEntity::Event_StartSound 
 ================
 */
 void idEntity::Event_StartSound( const char *soundName, int channel, int netSync ) {
 	int time;
-
+	
 	StartSound( soundName, ( s_channelType )channel, 0, ( netSync != 0 ), &time );
 	idThread::ReturnFloat( MS2SEC( time ) );
 }
@@ -4400,9 +4418,9 @@ void idEntity::Event_RestorePosition( void ) {
 	if ( spawnArgs.GetMatrix( "rotation", "1 0 0 0 1 0 0 0 1", axis ) ) {
 		angles = axis.ToAngles();
 	} else {
-		angles[ 0 ] = 0;
-		angles[ 1 ] = spawnArgs.GetFloat( "angle" );
-		angles[ 2 ] = 0;
+   		angles[ 0 ] = 0;
+   		angles[ 1 ] = spawnArgs.GetFloat( "angle" );
+   		angles[ 2 ] = 0;
 	}
 
 	Teleport( org, angles, NULL );
@@ -4444,7 +4462,7 @@ void idEntity::Event_UpdateCameraTarget( void ) {
 				dir.Normalize();
 				cameraTarget->SetAxis( dir.ToMat3() );
 				SetAxis(dir.ToMat3());
-				break;
+				break;						
 			}
 			kv = cameraTarget->spawnArgs.MatchPrefix( "target", kv );
 		}
@@ -4493,7 +4511,7 @@ idEntity::Event_WaitFrame
 */
 void idEntity::Event_WaitFrame( void ) {
 	idThread *thread;
-
+	
 	thread = idThread::CurrentThread();
 	if ( thread ) {
 		thread->WaitFrame();
@@ -4574,7 +4592,7 @@ void idEntity::Event_SetNeverDormant( int enable ) {
 /***********************************************************************
 
    Network
-
+	
 ***********************************************************************/
 
 /*
@@ -4748,7 +4766,7 @@ void idEntity::ServerSendEvent( int eventId, const idBitMsg *msg, bool saveEvent
 
 	outMsg.Init( msgBuf, sizeof( msgBuf ) );
 	outMsg.BeginWriting();
-	outMsg.WriteByte( GAME_RELIABLE_MESSAGE_EVENT );
+	outMsg.WriteByte( GAME_RELIABLE_MESSAGE_EVENT );	
 	outMsg.WriteBits( gameLocal.GetSpawnId( this ), 32 );
 	outMsg.WriteByte( eventId );
 	outMsg.WriteInt( gameLocal.time );
@@ -5086,7 +5104,7 @@ bool idAnimatedEntity::GetJointTransformForAnim( jointHandle_t jointHandle, int 
 
 	offset = frame[ jointHandle ].ToVec3();
 	axis = frame[ jointHandle ].ToMat3();
-
+	
 	return true;
 }
 

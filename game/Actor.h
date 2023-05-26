@@ -196,8 +196,8 @@ public:
 
 	virtual void			Teleport( const idVec3 &origin, const idAngles &angles, idEntity *destination );
 
-	virtual	renderView_t *	GetRenderView();
-
+	virtual	renderView_t *	GetRenderView();	
+	
 							// animation state control
 	int						GetAnim( int channel, const char *name );
 	void					UpdateAnimState( void );
@@ -208,6 +208,8 @@ public:
 	void					SetWaitState( const char *_waitstate );
 	bool					AnimDone( int channel, int blendFrames ) const;
 	virtual void			SpawnGibs( const idVec3 &dir, const char *damageDefName );
+
+	bool					GetFinalBoss( void ) const { return finalBoss; };	// sikk - Cyberdemon Damage Type
 
 protected:
 	friend class			idAnimState;

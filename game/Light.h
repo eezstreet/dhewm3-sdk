@@ -64,7 +64,6 @@ public:
 
 	void			SaveState( idDict *args );
 	virtual void	SetColor( float red, float green, float blue );
-	virtual void	SetColor( const idVec3 &color );
 	virtual void	SetColor( const idVec4 &color );
 	virtual void	GetColor( idVec3 &out ) const;
 	virtual void	GetColor( idVec4 &out ) const;
@@ -91,12 +90,16 @@ public:
 		EVENT_BECOMEBROKEN = idEntity::EVENT_MAXEVENTS,
 		EVENT_MAXEVENTS
 	};
-
 	virtual void	ClientPredictionThink( void );
 	virtual void	WriteToSnapshot( idBitMsgDelta &msg ) const;
 	virtual void	ReadFromSnapshot( const idBitMsgDelta &msg );
 	virtual bool	ClientReceiveEvent( int event, int time, const idBitMsg &msg );
 
+// sikk---> Soft Shadows PostProcess
+	renderLight_t*	GetRenderLight( void ) { return &renderLight; };
+	void			UpdateShadowState( void );
+// <---sikk
+	
 private:
 	renderLight_t	renderLight;				// light presented to the renderer
 	idVec3			localLightOrigin;			// light origin relative to the physics origin

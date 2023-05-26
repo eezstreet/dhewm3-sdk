@@ -58,6 +58,13 @@ If you have questions concerning this license or the applicable additional terms
 
 ===============================================================================
 */
+
+#define LAGO_IMG_WIDTH 64
+#define LAGO_IMG_HEIGHT 64
+#define LAGO_WIDTH	64
+#define LAGO_HEIGHT	44
+#define LAGO_MATERIAL	"textures/sfx/lagometer"
+#define LAGO_IMAGE		"textures/sfx/lagometer.tga"
 class idDeclEntityDef;
 class idRenderWorld;
 class idSoundWorld;
@@ -241,7 +248,7 @@ public:
 	idDict					persistentLevelInfo;	// contains args that are kept around between levels
 
 	// can be used to automatically effect every material in the world that references globalParms
-	float					globalShaderParms[ MAX_GLOBAL_SHADER_PARMS ];
+	float					globalShaderParms[ MAX_GLOBAL_SHADER_PARMS ];	
 
 	idRandom				random;					// random number generator used throughout the game
 
@@ -255,7 +262,7 @@ public:
 	idTestModel *			testmodel;				// for development testing of models
 	idEntityFx *			testFx;					// for development testing of fx
 
-	idStr					sessionCommand;			// a target_sessionCommand can set this to return something to the session
+	idStr					sessionCommand;			// a target_sessionCommand can set this to return something to the session 
 
 	idMultiplayerGame		mpGame;					// handles rules for standard dm
 
@@ -293,6 +300,34 @@ public:
 
 	idEntityPtr<idEntity>	lastGUIEnt;				// last entity with a GUI, used by Cmd_NextGUI_f
 	int						lastGUI;				// last GUI on the lastGUIEnt
+
+	idList<int>				currentLights;			// sikk - Soft Shadows PostProcess
+
+// sikk---> Explosion FX PostProcess
+	idVec3					explosionOrigin;
+	int						explosionRadius;
+	int						explosionDamage;
+	int						explosionTime;
+// <---sikk
+
+// sikk---> Random Encounters System
+	idList<int>				randomEnemyList;		// current list of eligible enemies
+	int						randomEnemyListNum;		// holds the size of the list for when loading a save game
+	int						randomEnemyTime;		// holds next spawn time
+	int						randomEnemyTally;		// holds number of random enemies that are active
+	int						GetEnemyNumFromName( idStr name );
+	idStr					GetEnemyNameFromNum( int num );
+	idStr					GetHellSkin( int num );
+	bool					SpawnRandomEnemy( void );
+// <---sikk
+
+// sikk---> Portal Sky Box
+	idEntityPtr<idEntity>	portalSkyEnt;
+	bool					portalSkyActive;
+	void					idGameLocal::SetPortalSkyEnt(idEntity* ent)/* { portalSkyEnt = ent; }*/;
+	bool					idGameLocal::IsPortalSkyAcive( void ) { return portalSkyActive; }
+	pvsHandle_t				GetPlayerPVS( void ) { return playerPVS; };
+// <---sikk
 
 	// ---------------------- Public idGame Interface -------------------
 
@@ -559,13 +594,6 @@ private:
 
 extern idGameLocal			gameLocal;
 extern idAnimManager		animationLib;
-
-//============================================================================
-
-class idGameError : public idException {
-public:
-	idGameError( const char *text ) : idException( text ) {}
-};
 
 //============================================================================
 

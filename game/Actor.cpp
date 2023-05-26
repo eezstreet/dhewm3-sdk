@@ -235,7 +235,7 @@ idAnimState::AnimDone
 */
 bool idAnimState::AnimDone( int blendFrames ) const {
 	int animDoneTime;
-
+	
 	animDoneTime = animator->CurrentAnim( channel )->GetEndTime();
 	if ( animDoneTime < 0 ) {
 		// playing a cycle
@@ -446,8 +446,8 @@ idActor::idActor( void ) {
 	allowEyeFocus		= false;
 
 	waitState			= "";
-
-	blink_anim			= 0;
+	
+	blink_anim			= NULL;
 	blink_time			= 0;
 	blink_min			= 0;
 	blink_max			= 0;
@@ -512,7 +512,7 @@ void idActor::Spawn( void ) {
 	spawnArgs.GetInt( "team", "0", team );
 	spawnArgs.GetVector( "offsetModel", "0 0 0", modelOffset );
 
-	spawnArgs.GetBool( "use_combat_bbox", "0", use_combat_bbox );
+	spawnArgs.GetBool( "use_combat_bbox", "0", use_combat_bbox );	
 
 	viewAxis = GetPhysics()->GetAxis();
 
@@ -545,7 +545,7 @@ void idActor::Spawn( void ) {
 
 		// don't let them drop to the floor
 		args.Set( "dropToFloor", "0" );
-
+		
 		gameLocal.SpawnEntityDef( args, &ent );
 		if ( !ent ) {
 			gameLocal.Error( "Couldn't spawn '%s' to attach to entity '%s'", kv->GetValue().c_str(), name.c_str() );
@@ -608,11 +608,19 @@ void idActor::Spawn( void ) {
 	blink_min = SEC2MS( spawnArgs.GetFloat( "blink_min", "0.5" ) );
 	blink_max = SEC2MS( spawnArgs.GetFloat( "blink_max", "8" ) );
 
+// sikk---> Player Head Type
 	// set up the head anim if necessary
-	int headAnim = headAnimator->GetAnim( "def_head" );
+	int headAnim;
+	if ( g_playerHeadType.GetBool() && spawnArgs.GetString( "def_head_custom" )[ 0 ] ) {
+		headAnim = headAnimator->GetAnim( "def_head_custom" );
+	} else {
+		headAnim = headAnimator->GetAnim( "def_head" );
+	}
+// <---sikk
+
 	if ( headAnim ) {
 		if ( headEnt ) {
-			headAnimator->CycleAnim( ANIMCHANNEL_ALL, headAnim, gameLocal.time, 0 );
+            headAnimator->CycleAnim( ANIMCHANNEL_ALL, headAnim, gameLocal.time, 0 );
 		} else {
 			headAnimator->CycleAnim( ANIMCHANNEL_HEAD, headAnim, gameLocal.time, 0 );
 		}
@@ -625,7 +633,7 @@ void idActor::Spawn( void ) {
 		}
 	}
 
-	finalBoss = spawnArgs.GetBool( "finalBoss" );
+	finalBoss = g_cyberdemonDamageType.GetBool() ? false : spawnArgs.GetBool( "finalBoss" );	// sikk - Cyberdemon Damage Type
 
 	FinishSetup();
 }
@@ -668,7 +676,14 @@ void idActor::SetupHead( void ) {
 		return;
 	}
 
-	headModel = spawnArgs.GetString( "def_head", "" );
+// sikk---> Player Head Type
+	if ( g_playerHeadType.GetBool() && spawnArgs.GetString( "def_head_custom" )[ 0 ] ) {
+		headModel = spawnArgs.GetString( "def_head_custom" );
+	} else {
+		headModel = spawnArgs.GetString( "def_head", "" );
+	}
+// <---sikk
+
 	if ( headModel[ 0 ] ) {
 		jointName = spawnArgs.GetString( "head_joint" );
 		joint = animator.GetJointHandle( jointName );
@@ -1261,7 +1276,7 @@ idThread *idActor::ConstructScriptObject( void ) {
 	} else {
 		scriptThread->EndThread();
 	}
-
+	
 	// call script object's constructor
 	constructor = scriptObject.GetConstructor();
 	if ( !constructor ) {
@@ -1349,7 +1364,7 @@ void idActor::UpdateScript( void ) {
 		if ( scriptThread->IsWaiting() ) {
 			break;
 		}
-
+        
 		scriptThread->Execute();
 		if ( idealState == state ) {
 			break;
@@ -1434,7 +1449,7 @@ bool idActor::CheckFOV( const idVec3 &pos ) const {
 
 	float	dot;
 	idVec3	delta;
-
+	
 	delta = pos - GetEyePosition();
 
 	// get our gravity normal
@@ -1868,7 +1883,7 @@ void idActor::GetAASLocation( idAAS *aas, idVec3 &pos, int &areaNum ) const {
 		areaNum = 0;
 		return;
 	}
-
+	
 	size = aas->GetSettings()->boundingBoxes[0][1];
 	bounds[0] = -size;
 	size.z = 32.0f;
@@ -1905,7 +1920,7 @@ void idActor::SetAnimState( int channel, const char *statename, int blendFrames 
 		headAnim.SetState( statename, blendFrames );
 		allowEyeFocus = true;
 		break;
-
+		
 	case ANIMCHANNEL_TORSO :
 		torsoAnim.SetState( statename, blendFrames );
 		legsAnim.Enable( blendFrames );
@@ -2157,7 +2172,7 @@ Bleeding wounds and surface overlays are applied in the collision code that
 calls Damage()
 ============
 */
-void idActor::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir,
+void idActor::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, 
 					  const char *damageDefName, const float damageScale, const int location ) {
 	if ( !fl.takedamage ) {
 		return;
@@ -2179,7 +2194,17 @@ void idActor::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir
 		gameLocal.Error( "Unknown damageDef '%s'", damageDefName );
 	}
 
-	int	damage = damageDef->GetInt( "damage" ) * damageScale;
+// sikk---> Damage Type
+	int	damage;
+	if ( g_damageType.GetInteger() == 1 && damageDef->GetInt( "damage_doom_scale" ) ) {
+		damage = damageDef->GetInt( "damage_doom_scale" ) * ( gameLocal.random.RandomInt( 255 ) % damageDef->GetInt( "damage_doom_range" ) + 1 );
+	} else if ( g_damageType.GetInteger() == 2 && damageDef->GetInt( "damage_custom" ) ) {
+		damage = damageDef->GetInt( "damage_custom" );
+	} else {
+		damage = damageDef->GetInt( "damage" );
+	}
+// <---sikk
+	damage *= damageScale;
 	damage = GetDamageForLocation( damage, location );
 
 	// inform the attacker that they hit someone
@@ -2191,7 +2216,8 @@ void idActor::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir
 				health = -999;
 			}
 			Killed( inflictor, attacker, damage, dir, location );
-			if ( ( health < -20 ) && spawnArgs.GetBool( "gib" ) && damageDef->GetBool( "gib" ) ) {
+// sikk - Changed gib health from -20 to -health
+			if ( ( health < -spawnArgs.GetInt( "health" ) ) && spawnArgs.GetBool( "gib" ) && damageDef->GetBool( "gib" ) ) {
 				Gib( dir, damageDefName );
 			}
 		} else {
@@ -2294,7 +2320,7 @@ bool idActor::Pain( idEntity *inflictor, idEntity *attacker, int damage, const i
 	}
 
 	if ( g_debugDamage.GetBool() ) {
-		gameLocal.Printf( "Damage: joint: '%s', zone '%s', anim '%s'\n", animator.GetJointName( ( jointHandle_t )location ),
+		gameLocal.Printf( "Damage: joint: '%s', zone '%s', anim '%s'\n", animator.GetJointName( ( jointHandle_t )location ), 
 			damageGroup.c_str(), painAnim.c_str() );
 	}
 
@@ -2347,19 +2373,29 @@ void idActor::SetupDamageGroups( void ) {
 		damageScale[ i ] = 1.0f;
 	}
 
+// sikk---> Doom 1/2 & custom Damage zones
 	// set the percentage on damage zones
-	arg = spawnArgs.MatchPrefix( "damage_scale ", NULL );
+	const char* scalePrefix;
+	if ( g_damageZoneType.GetInteger() == 1 )
+		scalePrefix = "damage_scale_doom ";
+	else if ( g_damageZoneType.GetInteger() == 2 )
+		scalePrefix = "damage_scale_custom ";
+	else
+		scalePrefix = "damage_scale ";
+
+	arg = spawnArgs.MatchPrefix( scalePrefix, NULL );
 	while ( arg ) {
 		scale = atof( arg->GetValue() );
 		groupname = arg->GetKey();
-		groupname.Strip( "damage_scale " );
+		groupname.Strip( scalePrefix );
 		for( i = 0; i < damageScale.Num(); i++ ) {
 			if ( damageGroups[ i ] == groupname ) {
 				damageScale[ i ] = scale;
 			}
 		}
-		arg = spawnArgs.MatchPrefix( "damage_scale ", arg );
+		arg = spawnArgs.MatchPrefix( scalePrefix, arg );
 	}
+// <---sikk
 }
 
 /*
@@ -2438,7 +2474,7 @@ idActor::Event_DisableEyeFocus
 */
 void idActor::Event_DisableEyeFocus( void ) {
 	allowEyeFocus = false;
-
+	
 	idEntity *headEnt = head.GetEntity();
 	if ( headEnt ) {
 		headEnt->GetAnimator()->Clear( ANIMCHANNEL_EYELIDS, gameLocal.time, FRAME2MS( 2 ) );
@@ -2575,7 +2611,7 @@ void idActor::Event_PlayAnim( int channel, const char *animname ) {
 	animFlags_t	flags;
 	idEntity *headEnt;
 	int	anim;
-
+	
 	anim = GetAnim( channel, animname );
 	if ( !anim ) {
 		if ( ( channel == ANIMCHANNEL_HEAD ) && head.GetEntity() ) {
@@ -2654,7 +2690,7 @@ idActor::Event_PlayCycle
 void idActor::Event_PlayCycle( int channel, const char *animname ) {
 	animFlags_t	flags;
 	int			anim;
-
+	
 	anim = GetAnim( channel, animname );
 	if ( !anim ) {
 		if ( ( channel == ANIMCHANNEL_HEAD ) && head.GetEntity() ) {
@@ -2727,8 +2763,8 @@ idActor::Event_IdleAnim
 */
 void idActor::Event_IdleAnim( int channel, const char *animname ) {
 	int anim;
-
-	anim = GetAnim( channel, animname );
+	
+	anim = GetAnim( channel, animname );	
 	if ( !anim ) {
 		if ( ( channel == ANIMCHANNEL_HEAD ) && head.GetEntity() ) {
 			gameLocal.DPrintf( "missing '%s' animation on '%s' (%s)\n", animname, name.c_str(), spawnArgs.GetString( "def_head", "" ) );
@@ -3068,7 +3104,7 @@ idActor::Event_HasAnim
 ================
 */
 void idActor::Event_HasAnim( int channel, const char *animname ) {
-	if ( GetAnim( channel, animname ) != 0 ) {
+	if ( GetAnim( channel, animname ) != NULL ) {
 		idThread::ReturnFloat( 1.0f );
 	} else {
 		idThread::ReturnFloat( 0.0f );
@@ -3132,9 +3168,9 @@ void idActor::Event_AnimLength( int channel, const char *animname ) {
 		} else {
 			idThread::ReturnFloat( MS2SEC( animator.AnimLength( anim ) ) );
 			return;
-		}
+		}		
 	}
-
+	
 	idThread::ReturnFloat( 0.0f );
 }
 
@@ -3158,7 +3194,7 @@ void idActor::Event_AnimDistance( int channel, const char *animname ) {
 			return;
 		}
 	}
-
+	
 	idThread::ReturnFloat( 0.0f );
 }
 
@@ -3202,7 +3238,7 @@ void idActor::Event_NextEnemy( idEntity *ent ) {
 		}
 	}
 
-	idThread::ReturnEntity( NULL );
+    idThread::ReturnEntity( NULL );
 }
 
 /*

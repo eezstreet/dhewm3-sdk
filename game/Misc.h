@@ -100,7 +100,7 @@ private:
   Bind to a mover to have the mover activate a trigger as it moves.
   When target by triggers, activating the trigger will toggle the
   activator on and off. Check "start_off" to have it spawn disabled.
-
+	
 ===============================================================================
 */
 
@@ -286,7 +286,7 @@ private:
 
 	void					PlayNextAnim( void );
 
-	void					Event_Activate( idEntity *activator );
+	void					Event_Activate( idEntity *activator );	
 	void					Event_Start( void );
 	void					Event_StartRagdoll( void );
 	void					Event_AnimDone( int animIndex );
@@ -480,7 +480,7 @@ public:
 	void				Save( idSaveGame *savefile ) const;
 	void				Restore( idRestoreGame *savefile );
 
-	void				Event_Activate( idEntity *activator );
+	void				Event_Activate( idEntity *activator );	
 
 private:
 	qhandle_t			portal;
@@ -600,7 +600,7 @@ private:
 class idEarthQuake : public idEntity {
 public:
 	CLASS_PROTOTYPE( idEarthQuake );
-
+			
 						idEarthQuake();
 
 	void				Spawn( void );
@@ -635,7 +635,7 @@ private:
 class idFuncPortal : public idEntity {
 public:
 	CLASS_PROTOTYPE( idFuncPortal );
-
+			
 						idFuncPortal();
 
 	void				Spawn( void );
@@ -661,7 +661,7 @@ private:
 class idFuncAASPortal : public idEntity {
 public:
 	CLASS_PROTOTYPE( idFuncAASPortal );
-
+			
 						idFuncAASPortal();
 
 	void				Spawn( void );
@@ -686,7 +686,7 @@ private:
 class idFuncAASObstacle : public idEntity {
 public:
 	CLASS_PROTOTYPE( idFuncAASObstacle );
-
+			
 						idFuncAASObstacle();
 
 	void				Spawn( void );
@@ -738,7 +738,7 @@ private:
 class idPhantomObjects : public idEntity {
 public:
 	CLASS_PROTOTYPE( idPhantomObjects );
-
+			
 						idPhantomObjects();
 
 	void				Spawn( void );
@@ -764,5 +764,26 @@ private:
 	idList<int>			targetTime;
 	idList<idVec3>		lastTargetPos;
 };
+
+// sikk---> Portal Sky Box
+/*
+===============================================================================
+
+idPortalSky
+
+===============================================================================
+*/
+class idPortalSky : public idEntity {
+public:
+	CLASS_PROTOTYPE( idPortalSky );
+
+	idPortalSky();
+	~idPortalSky();
+
+	void				Spawn( void );
+	void				Event_PostSpawn();
+	void				Event_Activate( idEntity *activator );
+};
+// <---sikk
 
 #endif /* !__GAME_MISC_H__ */

@@ -37,6 +37,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "Weapon.h"
 #include "Projectile.h"
 #include "PlayerIcon.h"
+#include "Grab.h"
 #include "GameEdit.h"
 
 class idAI;
@@ -45,7 +46,7 @@ class idAI;
 ===============================================================================
 
 	Player entity.
-
+	
 ===============================================================================
 */
 
@@ -67,7 +68,7 @@ const int	FOCUS_GUI_TIME = 500;
 const int MAX_WEAPONS = 16;
 
 const int DEAD_HEARTRATE = 0;			// fall to as you die
-const int LOWHEALTH_HEARTRATE_ADJ = 20; //
+const int LOWHEALTH_HEARTRATE_ADJ = 20; // 
 const int DYING_HEARTRATE = 30;			// used for volumen calc when dying/dead
 const int BASE_HEARTRATE = 70;			// default
 const int ZEROSTAMINA_HEARTRATE = 115;  // no stamina
@@ -99,7 +100,7 @@ struct idLevelTriggerInfo {
 
 // powerups - the "type" in item .def must match
 enum {
-	BERSERK = 0,
+	BERSERK = 0, 
 	INVISIBILITY,
 	MEGAHEALTH,
 	ADRENALINE,
@@ -194,6 +195,9 @@ public:
 	int						onePickupTime;
 	idList<idItemInfo>		pickupItemNames;
 	idList<idObjectiveInfo>	objectiveNames;
+
+	int						healthPackAmount;	// sikk - Health Management System (Health Pack)
+	int						adrenalineAmount;	// sikk - Adrenaline Pack System
 };
 
 typedef struct {
@@ -283,7 +287,6 @@ public:
 	bool					healthPulse;
 	bool					healthTake;
 	int						nextHealthTake;
-
 
 	bool					hiddenWeapon;		// if the weapon is hidden ( in noWeapons maps )
 	idEntityPtr<idProjectile> soulCubeProjectile;
@@ -409,7 +412,7 @@ public:
 	bool					GiveItem( idItem *item );
 	void					GiveItem( const char *name );
 	void					GiveHealthPool( float amt );
-
+	
 	bool					GiveInventoryItem( idDict *item );
 	void					RemoveInventoryItem( idDict *item );
 	bool					GiveInventoryItem( const char *name );
@@ -524,6 +527,87 @@ public:
 	bool					SelfSmooth( void );
 	void					SetSelfSmooth( bool b );
 
+	int						nScreenFrostAlpha;	// sikk - Screen Frost
+
+	int						nShowHudTimer;		// sikk - Dynamic hud system - Used to say when to show the hud as well as fade it in/out (just for health/armor/ammo/weapon changes)
+
+// sikk---> Manual Item Pickup
+	idItem*					focusItem;
+	int						itemPickupTime;
+// <---sikk
+
+// sikk---> Searchable Corpses
+	void					SearchCorpse( idAFEntity_Gibbable* corpse );
+	idAFEntity_Gibbable*	focusCorpse;
+	int						searchTimer;
+// <---sikk
+
+// sikk---> Object Manipulation
+	idGrabEntity			grabEntity;
+	idEntity*				focusMoveable;
+	int						focusMoveableId;
+	int						focusMoveableTimer;
+// <---sikk
+
+// sikk---> Adrenaline Pack System
+	void					UseAdrenaline( void );
+	int						adrenalineAmount;
+// <---sikk
+
+// sikk---> Health Management System
+	void					UseHealthPack( void );
+	int						healthPackAmount;
+	int						healthPackTimer;
+	int						nextHealthRegen;
+	int						prevHeatlh;			// sikk - holds player health after Health station has been used
+// <---sikk
+
+// sikk---> Crosshair Positioning
+	int						GetCurrentWeapon( void ) { return currentWeapon; };
+	idVec3					v3CrosshairPos;
+// <---sikk
+
+// sikk---> Weapon Management: Awareness
+	bool					GetWeaponAwareness( void );
+	bool					bWATrace;
+	bool					bWAIsSprinting;
+	bool					bWAUseHideDist;
+	float					fSpreadModifier;
+	idEntity*				entChainsawed;
+// <---sikk
+
+// sikk---> Depth Render
+	void					ToggleSuppression( bool bSuppress );
+	bool					bViewModelsModified;
+// <---sikk
+
+// sikk---> Depth of Field PostProcess
+	int						GetTalkCursor( void ) { return talkCursor; };	// used to check if character has focus
+	bool					bIsZoomed;
+	float					focusDistance;
+// <---sikk
+
+// sikk---> Global Ambient Light
+	void					ToggleAmbientLight( bool bOn );
+	bool					bAmbientLightOn;
+	idStr					szAmbientLightColor;
+	idStr					szAmbientLightRadius;
+// <---sikk
+
+// sikk---> Infrared Goggles/Headlight Mod
+	void					UpdateBattery( void );
+	void					ToggleIRGoggles( void );
+	void					ToggleHeadlight( void );
+
+	bool					bIRGogglesOn;
+	bool					bHeadlightOn;
+	int						nIRGogglesTime;
+	int						nHeadlightTime;
+	int						nBattery;
+	float					fIntensity;
+	float					fIRBloomParms[ 7 ];
+// <---sikk
+
 private:
 	jointHandle_t			hipJoint;
 	jointHandle_t			chestJoint;
@@ -598,7 +682,7 @@ private:
 	int						focusTime;
 	idAFEntity_Vehicle *	focusVehicle;
 	idUserInterface *		cursor;
-
+	
 	// full screen guis track mouse movements directly
 	int						oldMouseX;
 	int						oldMouseY;
@@ -675,7 +759,7 @@ private:
 	void					ExtractEmailInfo( const idStr &email, const char *scan, idStr &out );
 	void					UpdateObjectiveInfo( void );
 
-	void					UseVehicle( void );
+	void					UseVehicle( bool drive );	// sikk - function modified to support use function
 
 	void					Event_GetButtons( void );
 	void					Event_GetMove( void );
@@ -730,3 +814,4 @@ ID_INLINE void idPlayer::SetSelfSmooth( bool b ) {
 }
 
 #endif /* !__GAME_PLAYER_H__ */
+

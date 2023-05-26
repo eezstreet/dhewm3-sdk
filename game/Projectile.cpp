@@ -243,6 +243,8 @@ void idProjectile::Create( idEntity *owner, const idVec3 &start, const idVec3 &d
 
 	damagePower = 1.0f;
 
+	renderEntity.suppressSurfaceInViewID = -8;	// sikk - Depth Render
+
 	UpdateVisuals();
 
 	state = CREATED;
@@ -281,6 +283,7 @@ idProjectile::Launch
 */
 void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 &pushVelocity, const float timeSinceFire, const float launchPower, const float dmgPower ) {
 	float			fuse;
+	float			startthrust;
 	float			endthrust;
 	idVec3			velocity;
 	idAngles		angular_velocity;
@@ -294,6 +297,7 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 	idVec3			gravVec;
 	idVec3			tmp;
 	idMat3			axis;
+	int				thrust_start;
 	int				contents;
 	int				clipMask;
 
@@ -305,10 +309,11 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 	}
 
 	thrust				= spawnArgs.GetFloat( "thrust" );
+	startthrust			= spawnArgs.GetFloat( "thrust_start" );
 	endthrust			= spawnArgs.GetFloat( "thrust_end" );
 
 	spawnArgs.GetVector( "velocity", "0 0 0", velocity );
-
+	
 	speed = velocity.Length() * launchPower;
 
 	damagePower = dmgPower;
@@ -332,6 +337,7 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 	}
 
 	thrust *= mass;
+	thrust_start = SEC2MS( startthrust ) + gameLocal.time;
 	thrust_end = SEC2MS( endthrust ) + gameLocal.time;
 
 	lightStartTime = 0;
@@ -363,7 +369,7 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 	}
 
 	// don't do tracers on client, we don't know origin and direction
-	if ( spawnArgs.GetBool( "tracers" ) && gameLocal.random.RandomFloat() > 0.5f ) {
+	if ( spawnArgs.GetBool( "tracers" ) && ( ( gameLocal.random.RandomFloat() * 0.99999f ) < g_tracerFrequency.GetFloat() ) ) {	// sikk - Tracer Frequency
 		SetModel( spawnArgs.GetString( "model_tracer" ) );
 		projectileFlags.isTracer = true;
 	}
@@ -468,11 +474,11 @@ void idProjectile::Think( void ) {
 				if ( gameLocal.time < lightEndTime ) {
 					float frac = ( float )( gameLocal.time - lightStartTime ) / ( float )( lightEndTime - lightStartTime );
 					color.Lerp( lightColor, color, frac );
-				}
+				} 
 				renderLight.shaderParms[SHADERPARM_RED] = color.x;
 				renderLight.shaderParms[SHADERPARM_GREEN] = color.y;
 				renderLight.shaderParms[SHADERPARM_BLUE] = color.z;
-			}
+			} 
 			gameRenderWorld->UpdateLightDef( lightDefHandle, &renderLight );
 		} else {
 			lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
@@ -582,6 +588,14 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity ) {
 				idPlayer *player = static_cast<idPlayer *>( owner.GetEntity() );
 				player->AddProjectileHits( 1 );
 				damageScale *= player->PowerUpModifier( PROJECTILE_DAMAGE );
+
+// sikk---> Blood Spray Screen Effect
+				if ( g_showBloodSpray.GetBool() ) {
+					idVec3 vLength = player->GetEyePosition() - ent->GetPhysics()->GetOrigin();
+					if ( vLength.Length() <= g_bloodSprayDistance.GetFloat() && ( gameLocal.random.RandomFloat() * 0.99999f ) < g_bloodSprayFrequency.GetFloat() )
+						player->playerView.AddBloodSpray( g_bloodSprayTime.GetFloat() );
+				}
+// <---sikk
 			}
 		}
 
@@ -832,12 +846,15 @@ void idProjectile::Explode( const trace_t &collision, idEntity *ignore ) {
 
 	if ( fxname && *fxname ) {
 		SetModel( fxname );
-		renderEntity.shaderParms[SHADERPARM_RED] =
-		renderEntity.shaderParms[SHADERPARM_GREEN] =
-		renderEntity.shaderParms[SHADERPARM_BLUE] =
+		renderEntity.shaderParms[SHADERPARM_RED] = 
+		renderEntity.shaderParms[SHADERPARM_GREEN] = 
+		renderEntity.shaderParms[SHADERPARM_BLUE] = 
 		renderEntity.shaderParms[SHADERPARM_ALPHA] = 1.0f;
 		renderEntity.shaderParms[SHADERPARM_TIMEOFFSET] = -MS2SEC( gameLocal.time );
 		renderEntity.shaderParms[SHADERPARM_DIVERSITY] = gameLocal.random.CRandomFloat();
+
+		renderEntity.suppressSurfaceInViewID = -8;	// sikk - Depth Render
+
 		Show();
 		removeTime = ( removeTime > 3000 ) ? removeTime : 3000;
 	}
@@ -887,10 +904,14 @@ void idProjectile::Explode( const trace_t &collision, idEntity *ignore ) {
 			if ( removeTime < delay * 1000 ) {
 				removeTime = ( delay + 0.10 ) * 1000;
 			}
-			PostEventSec( &EV_RadiusDamage, delay, ignore );
+// sikk---> Entities hit directly by a projectile will no longer be ignored by splash damage
+//			PostEventSec( &EV_RadiusDamage, delay, ignore );
+			PostEventSec( &EV_RadiusDamage, delay, NULL );
 		} else {
-			Event_RadiusDamage( ignore );
+//			Event_RadiusDamage( ignore );
+			Event_RadiusDamage( NULL );
 		}
+// <---sikk
 	}
 
 	// spawn debris entities
@@ -1098,7 +1119,7 @@ void idProjectile::WriteToSnapshot( idBitMsgDelta &msg ) const {
 
 		msg.WriteDeltaFloat( 0.0f, velocity[0], RB_VELOCITY_EXPONENT_BITS, RB_VELOCITY_MANTISSA_BITS );
 		msg.WriteDeltaFloat( 0.0f, velocity[1], RB_VELOCITY_EXPONENT_BITS, RB_VELOCITY_MANTISSA_BITS );
-		msg.WriteDeltaFloat( 0.0f, velocity[2], RB_VELOCITY_EXPONENT_BITS, RB_VELOCITY_MANTISSA_BITS );
+		msg.WriteDeltaFloat( 0.0f, velocity[2], RB_VELOCITY_EXPONENT_BITS, RB_VELOCITY_MANTISSA_BITS );		
 	}
 }
 
@@ -1343,7 +1364,7 @@ void idGuidedProjectile::Think( void ) {
 	int			i;
 
 	if ( state == LAUNCHED && !unGuided ) {
-
+		
 		GetSeekPos( seekPos );
 
 		if ( rndUpdateTime < gameLocal.time ) {
@@ -1419,7 +1440,7 @@ void idGuidedProjectile::Launch( const idVec3 &start, const idVec3 &dir, const i
 			gameLocal.clip.TracePoint( tr, start, end, MASK_SHOT_RENDERMODEL | CONTENTS_BODY, owner.GetEntity() );
 			if ( tr.fraction < 1.0f ) {
 				enemy = gameLocal.GetTraceEntity( tr );
-			}
+			} 
 			// ignore actors on the player's team
 			if ( enemy.GetEntity() == NULL || !enemy.GetEntity()->IsType( idActor::Type ) || ( static_cast<idActor *>( enemy.GetEntity() )->team == player->team ) ) {
 				enemy = player->EnemyWithMostHealth();
@@ -1562,13 +1583,13 @@ void idSoulCubeMissile::Think( void ) {
 				if ( !gameLocal.smokeParticles->EmitSmoke( smokeKill, smokeKillTime, gameLocal.random.CRandomFloat(), orbitOrg, mat3_identity ) ) {
 					smokeKillTime = gameLocal.time;
 				}
-			}
+			} 
 		} else  {
 			if ( accelTime && gameLocal.time < launchTime + accelTime * 1000 ) {
 				pct = ( gameLocal.time - launchTime ) / ( accelTime * 1000 );
 				speed = ( startingVelocity + ( startingVelocity + endingVelocity ) * pct ).Length();
-			}
-		}
+			} 
+		} 
 		idGuidedProjectile::Think();
 		GetSeekPos( seekPos );
 		if ( ( seekPos - physicsObj.GetOrigin() ).Length() < 32.0f ) {
@@ -1605,7 +1626,7 @@ void idSoulCubeMissile::GetSeekPos( idVec3 &out ) {
 	if ( destOrg != vec3_zero ) {
 		out = destOrg;
 		return;
-	}
+	} 
 	idGuidedProjectile::GetSeekPos( out );
 }
 
@@ -1651,7 +1672,7 @@ void idSoulCubeMissile::Launch( const idVec3 &start, const idVec3 &dir, const id
 	launchTime = gameLocal.time;
 	killPhase = false;
 	UpdateVisuals();
-
+	
 	ownerEnt = owner.GetEntity();
 	if ( ownerEnt && ownerEnt->IsType( idPlayer::Type ) ) {
 		static_cast<idPlayer *>( ownerEnt )->SetSoulCubeProjectile( this );
@@ -1812,9 +1833,9 @@ void idBFGProjectile::Think( void ) {
 			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_BEAM_END_X ] = org.x;
 			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_BEAM_END_Y ] = org.y;
 			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_BEAM_END_Z ] = org.z;
-			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_RED ] =
-			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_GREEN ] =
-			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_BLUE ] =
+			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_RED ] = 
+			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_GREEN ] = 
+			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_BLUE ] = 
 			beamTargets[i].renderEntity.shaderParms[ SHADERPARM_ALPHA ] = 1.0f;
 			if ( gameLocal.time > nextDamageTime ) {
 				bool bfgVision = true;
@@ -1823,9 +1844,9 @@ void idBFGProjectile::Think( void ) {
 					org.Normalize();
 					beamTargets[i].target.GetEntity()->Damage( this, owner.GetEntity(), org, damageFreq, ( damagePower ) ? damagePower : 1.0f, INVALID_JOINT );
 				} else {
-					beamTargets[i].renderEntity.shaderParms[ SHADERPARM_RED ] =
-					beamTargets[i].renderEntity.shaderParms[ SHADERPARM_GREEN ] =
-					beamTargets[i].renderEntity.shaderParms[ SHADERPARM_BLUE ] =
+					beamTargets[i].renderEntity.shaderParms[ SHADERPARM_RED ] = 
+					beamTargets[i].renderEntity.shaderParms[ SHADERPARM_GREEN ] = 
+					beamTargets[i].renderEntity.shaderParms[ SHADERPARM_BLUE ] = 
 					beamTargets[i].renderEntity.shaderParms[ SHADERPARM_ALPHA ] = 0.0f;
 					bfgVision = false;
 				}
@@ -1869,7 +1890,7 @@ void idBFGProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVe
 	idProjectile::Launch( start, dir, pushVelocity, 0.0f, power, dmgPower );
 
 	// dmgPower * radius is the target acquisition area
-	// acquisition should make sure that monsters are not dormant
+	// acquisition should make sure that monsters are not dormant 
 	// which will cut down on hitting monsters not actively fighting
 	// but saves on the traces making sure they are visible
 	// damage is not applied until the projectile explodes
@@ -2160,7 +2181,7 @@ void idDebris::Launch( void ) {
 
 	spawnArgs.GetVector( "velocity", "0 0 0", velocity );
 	spawnArgs.GetAngles( "angular_velocity", "0 0 0", angular_velocity );
-
+	
 	linear_friction		= spawnArgs.GetFloat( "linear_friction" );
 	angular_friction	= spawnArgs.GetFloat( "angular_friction" );
 	contact_friction	= spawnArgs.GetFloat( "contact_friction" );

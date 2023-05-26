@@ -334,6 +334,7 @@ set(src_game
 	game/GameEdit.cpp
 	game/Game_local.cpp
 	game/Game_network.cpp
+	game/Grab.cpp
 	game/Item.cpp
 	game/IK.cpp
 	game/Light.cpp
@@ -381,6 +382,7 @@ set(src_game
 	game/physics/Force_Constant.cpp
 	game/physics/Force_Drag.cpp
 	game/physics/Force_Field.cpp
+	game/physics/Force_Grab.cpp
 	game/physics/Force_Spring.cpp
 	game/physics/Physics.cpp
 	game/physics/Physics_AF.cpp

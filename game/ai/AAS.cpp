@@ -164,7 +164,7 @@ int idAASLocal::BoundsReachableAreaNum( const idBounds &bounds, const int areaFl
 	if ( !file ) {
 		return 0;
 	}
-
+	
 	return file->BoundsReachableAreaNum( bounds, areaFlags, TFL_INVALID );
 }
 
@@ -274,3 +274,17 @@ void idAASLocal::GetEdge( int edgeNum, idVec3 &start, idVec3 &end ) const {
 	start = file->GetVertex( v[INTSIGNBITSET(edgeNum)] );
 	end = file->GetVertex( v[INTSIGNBITNOTSET(edgeNum)] );
 }
+
+// sikk---> Random Encounters System
+/*
+============
+idAASLocal::GetNumAreas
+============
+*/
+int idAASLocal::GetNumAreas( int aasNum ) const {
+	if ( !file ) {
+		return -1;
+	}
+	return file->GetNumAreas();
+}
+// <---sikk

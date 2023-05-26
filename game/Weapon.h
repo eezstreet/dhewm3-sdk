@@ -38,7 +38,7 @@ If you have questions concerning this license or the applicable additional terms
 ===============================================================================
 
 	Player Weapon
-
+	
 ===============================================================================
 */
 
@@ -158,6 +158,24 @@ public:
 
 	virtual void			ClientPredictionThink( void );
 
+	float					wm_hide_distance;	// sikk - Weapon Management: Awareness
+
+	idEntityPtr<idAnimatedEntity>*	GetWorldModel( void ) { return &worldModel; };	// sikk - Depth Render
+
+// sikk---> Crosshair Positioning
+	idVec3					GetMuzzleOrigin( void ) { return muzzleOrigin; };
+	idMat3					GetMuzzleAxis( void ) { return muzzleAxis; };
+	jointHandle_t			GetBarrelJointView( void ) { return barrelJointView; };
+	idDict					GetProjectileDict( void ) { return projectileDict; };
+// <---sikk
+	
+// sikk---> Soft Shadows PostProcess
+	renderLight_t*			GetMuzzleFlash( void ) { return &muzzleFlash; };
+	renderLight_t*			GetWorldMuzzleFlash( void ) { return &worldMuzzleFlash; };
+	int						GetMuzzleFlashHandle( void ) { return muzzleFlashHandle; };
+	int						GetWorldMuzzleFlashHandle( void ) { return worldMuzzleFlashHandle; };
+// <---sikk
+
 private:
 	// script control
 	idScriptBool			WEAPON_ATTACK;
@@ -201,7 +219,7 @@ private:
 	// the view weapon render entity parms
 	idVec3					viewWeaponOrigin;
 	idMat3					viewWeaponAxis;
-
+	
 	// the muzzle bone's position, used for launching projectiles and trailing smoke
 	idVec3					muzzleOrigin;
 	idMat3					muzzleAxis;
@@ -260,7 +278,7 @@ private:
 	bool					isFiring;
 
 	// zoom
-	int						zoomFov;			// variable zoom fov per weapon
+    int						zoomFov;			// variable zoom fov per weapon
 
 	// joints from models
 	jointHandle_t			barrelJointView;
@@ -281,14 +299,14 @@ private:
 	int						weaponSmokeStartTime;	// set to gameLocal.time every weapon fire
 	bool					continuousSmoke;		// if smoke is continuous ( chainsaw )
 	const idDeclParticle *  strikeSmoke;			// striking something in melee
-	int						strikeSmokeStartTime;	// timing
-	idVec3					strikePos;				// position of last melee strike
+	int						strikeSmokeStartTime;	// timing	
+	idVec3					strikePos;				// position of last melee strike	
 	idMat3					strikeAxis;				// axis of last melee strike
 	int						nextStrikeFx;			// used for sound and decal ( may use for strike smoke too )
 
 	// nozzle effects
 	bool					nozzleFx;			// does this use nozzle effects ( parm5 at rest, parm6 firing )
-										// this also assumes a nozzle light atm
+												// this also assumes a nozzle light atm
 	int						nozzleFxFade;		// time it takes to fade between the effects
 	int						lastAttack;			// last time an attack occured
 	renderLight_t			nozzleGlow;			// nozzle light
